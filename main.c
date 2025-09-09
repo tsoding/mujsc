@@ -1,0 +1,250 @@
+#include <assert.h>
+#include <stdio.h>
+#include <stdbool.h>
+
+#define NOB_IMPLEMENTATION
+#define NOB_STRIP_PREFIX
+#include "nob.h"
+
+#include <mujs.h>
+#include <jsi.h>
+
+Cmd cmd = {0};
+
+void usage(const char *program_name)
+{
+    fprintf(stderr, "Usage: %s <input.js> <output>\n", program_name);
+}
+
+int main(int argc, char **argv)
+{
+    const char *program_name = shift(argv, argc);
+
+    if (argc <= 0) {
+        usage(program_name);
+        fprintf(stderr, "ERROR: no input is provided\n");
+        return 1;
+    }
+    const char *filename = shift(argv, argc);
+
+    if (argc <= 0) {
+        usage(program_name);
+        fprintf(stderr, "ERROR: no output is provided\n");
+        return 1;
+    }
+    const char *output_path = shift(argv, argc);
+
+    js_State *J = js_newstate(NULL, NULL, 0);
+    assert(J != NULL);
+
+    String_Builder sb_source = {0};
+    if (!read_entire_file(filename, &sb_source)) return 1;
+    sb_append_null(&sb_source);
+
+    const char *source = sb_source.items;
+
+    js_Ast *P;
+    js_Function *F;
+
+    if (js_try(J)) {
+        jsP_freeparse(J);
+        printf("EXCEPTION!!\n");
+        return 69;
+    }
+
+    P = jsP_parse(J, filename, source);
+    F = jsC_compilescript(J, P, J->default_strict);
+    jsP_freeparse(J);
+
+    js_endtry(J);
+
+    // pc = ..... [OP_SETVAR] [ ] [ ] [ ] [ ]
+    //                                        ^
+
+#ifdef DEBUG
+    asm("int3");
+#endif
+
+    const char *str;
+#define READSTRING() \
+    memcpy(&str, pc, sizeof(str)); \
+    pc += sizeof(str) / sizeof(*pc)
+
+    //                          rbp
+    //                          v
+    // ..bbbbaaaarbp*____________
+    //               ^rsp
+
+    String_Builder sb_out = {0};
+    sb_appendf(&sb_out, ".global main\n");
+    sb_appendf(&sb_out, "main:\n");
+    sb_appendf(&sb_out, "    pushq %%rbp\n");
+    sb_appendf(&sb_out, "    movq %%rsp, %%rbp\n");
+    sb_appendf(&sb_out, "    subq $%d, %%rsp\n", 8*(F->varlen + 1));
+
+    js_Instruction *pc = F->code;
+    js_Instruction *pc_end = F->code + F->codelen;
+
+    while (pc < pc_end) {
+        pc++;                  // skipping the line
+        enum js_OpCode opcode = *pc++;
+
+        switch (opcode) {
+        case OP_POP: {
+            sb_appendf(&sb_out, "// OP_POP\n");
+            sb_appendf(&sb_out, "    popq %%rax\n");
+        } break;
+        case OP_DUP:        TODO("OP_DUP");        break;
+        case OP_DUP2:       TODO("OP_DUP2");       break;
+        case OP_ROT2:       TODO("OP_ROT2");       break;
+        case OP_ROT3:       TODO("OP_ROT3");       break;
+        case OP_ROT4:       TODO("OP_ROT4");       break;
+        case OP_INTEGER: {
+            unsigned short lit = *pc++ - 32768;
+            sb_appendf(&sb_out, "// OP_INTEGER(%u)\n", lit);
+            sb_appendf(&sb_out, "    pushq $%u\n", lit);
+        } break;
+        case OP_NUMBER:     TODO("OP_NUMBER");     break;
+        case OP_STRING:     TODO("OP_STRING");     break;
+        case OP_CLOSURE:    TODO("OP_CLOSURE");    break;
+        case OP_NEWARRAY:   TODO("OP_NEWARRAY");   break;
+        case OP_NEWOBJECT:  TODO("OP_NEWOBJECT");  break;
+        case OP_NEWREGEXP:  TODO("OP_NEWREGEXP");  break;
+        case OP_UNDEF: {
+            sb_appendf(&sb_out, "// OP_UNDEF\n");
+            sb_appendf(&sb_out, "    pushq $0\n");
+        } break;
+        case OP_NULL:       TODO("OP_NULL");       break;
+        case OP_TRUE:       TODO("OP_TRUE");       break;
+        case OP_FALSE:      TODO("OP_FALSE");      break;
+        case OP_THIS:       TODO("OP_THIS");       break;
+        case OP_CURRENT:    TODO("OP_CURRENT");    break;
+        case OP_GETLOCAL: {
+            unsigned short index = *pc++;
+            sb_appendf(&sb_out, "// OP_GETLOCAL(%u)\n", index);
+            sb_appendf(&sb_out, "    pushq -%u(%%rbp)\n", index*8);
+        } break;
+        case OP_SETLOCAL: {
+            unsigned short index = *pc++;
+            sb_appendf(&sb_out, "// OP_SETLOCAL(%u)\n", index);
+            sb_appendf(&sb_out, "    movq (%%rsp), %%rax\n");
+            sb_appendf(&sb_out, "    movq %%rax, -%u(%%rbp)\n", index*8);
+        } break;
+        case OP_DELLOCAL:   TODO("OP_DELLOCAL");   break;
+        case OP_HASVAR:     TODO("OP_HASVAR");     break;
+        case OP_GETVAR: {
+            READSTRING();
+            sb_appendf(&sb_out, "// OP_GETVAR(%s)\n", str);
+            sb_appendf(&sb_out, "    pushq $%s\n", str);
+        } break;
+        case OP_SETVAR: {
+            READSTRING();
+            TODO(temp_sprintf("OP_SETVAR(%s)", str));
+        } break;
+        case OP_DELVAR:     TODO("OP_DELVAR");     break;
+        case OP_IN:         TODO("OP_IN");         break;
+        case OP_SKIPARRAY:  TODO("OP_SKIPARRAY");  break;
+        case OP_INITARRAY:  TODO("OP_INITARRAY");  break;
+        case OP_INITPROP:   TODO("OP_INITPROP");   break;
+        case OP_INITGETTER: TODO("OP_INITGETTER"); break;
+        case OP_INITSETTER: TODO("OP_INITSETTER"); break;
+        case OP_GETPROP:    TODO("OP_GETPROP");    break;
+        case OP_SETPROP:    TODO("OP_SETPROP");    break;
+        case OP_DELPROP:    TODO("OP_DELPROP");    break;
+        case OP_ITERATOR:   TODO("OP_ITERATOR");   break;
+        case OP_NEXTITER:   TODO("OP_NEXTITER");   break;
+        case OP_EVAL:       TODO("OP_EVAL");       break;
+        case OP_CALL: {
+            unsigned short arity = *pc++;
+
+            sb_appendf(&sb_out, "// OP_CALL(%u)\n", arity);
+            const char *regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+            assert(arity == 1);
+            sb_appendf(&sb_out, "    popq %%%s\n", regs[0]);
+            sb_appendf(&sb_out, "    popq %%rax\n"); // skip implicit this
+            sb_appendf(&sb_out, "    popq %%rax\n");
+            sb_appendf(&sb_out, "    callq %%rax\n");
+            sb_appendf(&sb_out, "    pushq %%rax\n");
+        } break;
+        case OP_NEW:        TODO("OP_NEW");        break;
+        case OP_TYPEOF:     TODO("OP_TYPEOF");     break;
+        case OP_POS:        TODO("OP_POS");        break;
+        case OP_NEG:        TODO("OP_NEG");        break;
+        case OP_BITNOT:     TODO("OP_BITNOT");     break;
+        case OP_LOGNOT:     TODO("OP_LOGNOT");     break;
+        case OP_INC:        TODO("OP_INC");        break;
+        case OP_DEC:        TODO("OP_DEC");        break;
+        case OP_POSTINC:    TODO("OP_POSTINC");    break;
+        case OP_POSTDEC:    TODO("OP_POSTDEC");    break;
+        case OP_MUL:        TODO("OP_MUL");        break;
+        case OP_DIV:        TODO("OP_DIV");        break;
+        case OP_MOD:        TODO("OP_MOD");        break;
+        case OP_ADD: {
+            sb_appendf(&sb_out, "// OP_ADD\n");
+            sb_appendf(&sb_out, "    popq %%rax\n");
+            sb_appendf(&sb_out, "    add %%rax, (%%rsp)\n");
+        } break;
+        case OP_SUB:        TODO("OP_SUB");        break;
+        case OP_SHL:        TODO("OP_SHL");        break;
+        case OP_SHR:        TODO("OP_SHR");        break;
+        case OP_USHR:       TODO("OP_USHR");       break;
+        case OP_LT:         TODO("OP_LT");         break;
+        case OP_GT:         TODO("OP_GT");         break;
+        case OP_LE:         TODO("OP_LE");         break;
+        case OP_GE:         TODO("OP_GE");         break;
+        case OP_EQ:         TODO("OP_EQ");         break;
+        case OP_NE:         TODO("OP_NE");         break;
+        case OP_STRICTEQ:   TODO("OP_STRICTEQ");   break;
+        case OP_STRICTNE:   TODO("OP_STRICTNE");   break;
+        case OP_JCASE:      TODO("OP_JCASE");      break;
+        case OP_BITAND:     TODO("OP_BITAND");     break;
+        case OP_BITXOR:     TODO("OP_BITXOR");     break;
+        case OP_BITOR:      TODO("OP_BITOR");      break;
+        case OP_INSTANCEOF: TODO("OP_INSTANCEOF"); break;
+        case OP_THROW:      TODO("OP_THROW");      break;
+        case OP_TRY:        TODO("OP_TRY");        break;
+        case OP_ENDTRY:     TODO("OP_ENDTRY");     break;
+        case OP_CATCH:      TODO("OP_CATCH");      break;
+        case OP_ENDCATCH:   TODO("OP_ENDCATCH");   break;
+        case OP_WITH:       TODO("OP_WITH");       break;
+        case OP_ENDWITH:    TODO("OP_ENDWITH");    break;
+        case OP_DEBUGGER:   TODO("OP_DEBUGGER");   break;
+        case OP_JUMP:       TODO("OP_JUMP");       break;
+        case OP_JTRUE:      TODO("OP_JTRUE");      break;
+        case OP_JFALSE:     TODO("OP_JFALSE");     break;
+        case OP_RETURN: {
+            sb_appendf(&sb_out, "// OP_RETURN\n");
+            sb_appendf(&sb_out, "    movq $0, %%rax\n");
+            sb_appendf(&sb_out, "    movq %%rbp, %%rsp\n");
+            sb_appendf(&sb_out, "    pop %%rbp\n");
+            sb_appendf(&sb_out, "    ret\n");
+        } break;
+        case OP_GETPROP_S:  TODO("OP_GETPROP_S");  break;
+        case OP_SETPROP_S:  TODO("OP_SETPROP_S");  break;
+        case OP_DELPROP_S:  TODO("OP_DELPROP_S");  break;
+        default:
+            UNREACHABLE(temp_sprintf("UNKNOWN(%u)", opcode));
+        }
+    }
+
+    const char *output_asm_path = temp_sprintf("%s.asm", output_path);
+    if (!write_entire_file(output_asm_path, sb_out.items, sb_out.count)) return 1;
+    nob_log(INFO, "Generate %s", output_path);
+
+    const char *output_o_path = temp_sprintf("%s.o", output_path);
+    cmd_append(&cmd, "as");
+    cmd_append(&cmd, "-o", output_o_path);
+    cmd_append(&cmd, "-g");
+    cmd_append(&cmd, output_asm_path);
+    if (!cmd_run(&cmd)) return 1;
+
+    cmd_append(&cmd, "cc");
+    cmd_append(&cmd, "-g");
+    cmd_append(&cmd, "-no-pie");
+    cmd_append(&cmd, "-o", output_path);
+    cmd_append(&cmd, output_o_path);
+    cmd_append(&cmd, "mujsc_runtime.c");
+    if (!cmd_run(&cmd)) return 1;
+
+    return 0;
+}
