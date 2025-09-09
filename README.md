@@ -16,3 +16,9 @@ $ ./examples/example
 34
 69
 ```
+
+## Screencast
+
+This project was originally started on a livestream:
+
+[![thumbnail](./thumbnail.png)](https://www.youtube.com/watch?v=7uVhfiwcWZ8)
