@@ -1,5 +1,7 @@
 # MuJS Compiler
 
+Small subset of ES5 to x86_64 assembly based on [MuJS](https://mujs.com/).
+
 ## Quick Start
 
 ```console
