@@ -51,8 +51,8 @@ int main(int argc, char **argv)
             cmd_append(&cmd, "gf2");
         }
         cmd_append(&cmd, MUJSC_EXE);
-        cmd_append(&cmd, EXAMPLES_FOLDER"nice.js");
-        cmd_append(&cmd, BUILD_FOLDER"nice");
+        cmd_append(&cmd, EXAMPLES_FOLDER"hello.js");
+        cmd_append(&cmd, BUILD_FOLDER"hello");
         da_append_many(&cmd, argv, argc);
         if (!cmd_run(&cmd)) return 1;
     }

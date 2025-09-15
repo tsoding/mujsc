@@ -16,6 +16,12 @@ void usage(const char *program_name)
     fprintf(stderr, "Usage: %s <input.js> <output>\n", program_name);
 }
 
+typedef struct {
+    const char **items;
+    size_t count;
+    size_t capacity;
+} Strings;
+
 int main(int argc, char **argv)
 {
     const char *program_name = shift(argv, argc);
@@ -85,7 +91,11 @@ int main(int argc, char **argv)
     js_Instruction *pc = F->code;
     js_Instruction *pc_end = F->code + F->codelen;
 
+    Strings strings = {0};
+
     while (pc < pc_end) {
+        sb_appendf(&sb_out, "op_%ld: ", pc - F->code);
+
         int line = *pc++;
         enum js_OpCode opcode = *pc++;
 
@@ -113,8 +123,16 @@ int main(int argc, char **argv)
             sb_appendf(&sb_out, "// OP_INTEGER(%u) %s:%d\n", lit, filename, line);
             sb_appendf(&sb_out, "    pushq $%u\n", lit);
         } break;
-        case OP_NUMBER:     TODO("OP_NUMBER");     break;
-        case OP_STRING:     TODO("OP_STRING");     break;
+        case OP_NUMBER: {
+            TODO(temp_sprintf("OP_NUMBER %s:%d", filename, line));
+        } break;
+        case OP_STRING: {
+            READSTRING();
+            sb_appendf(&sb_out, "// OP_STRING(%s) %s:%d\n", str, filename, line);
+            size_t index = strings.count;
+            da_append(&strings, strdup(str));
+            sb_appendf(&sb_out, "    pushq $string_%zu\n", index);
+        } break;
         case OP_CLOSURE:    TODO("OP_CLOSURE");    break;
         case OP_NEWARRAY:   TODO("OP_NEWARRAY");   break;
         case OP_NEWOBJECT:  TODO("OP_NEWOBJECT");  break;
@@ -181,7 +199,10 @@ int main(int argc, char **argv)
         case OP_NEG:        TODO("OP_NEG");        break;
         case OP_BITNOT:     TODO("OP_BITNOT");     break;
         case OP_LOGNOT:     TODO("OP_LOGNOT");     break;
-        case OP_INC:        TODO("OP_INC");        break;
+        case OP_INC: {
+            sb_appendf(&sb_out, "// OP_ADD %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "    incq (%%rsp)\n");
+        } break;
         case OP_DEC:        TODO("OP_DEC");        break;
         case OP_POSTINC:    TODO("OP_POSTINC");    break;
         case OP_POSTDEC:    TODO("OP_POSTDEC");    break;
@@ -197,7 +218,18 @@ int main(int argc, char **argv)
         case OP_SHL:        TODO("OP_SHL");        break;
         case OP_SHR:        TODO("OP_SHR");        break;
         case OP_USHR:       TODO("OP_USHR");       break;
-        case OP_LT:         TODO("OP_LT");         break;
+        case OP_LT: {
+            // TODO: add some sort of type checking that generates different code depending on the types.
+            // Type check similarly to how WebAssembly does the verification step. That is perform a "meta-execution"
+            // which pushes not values but their types on the stack.
+            sb_appendf(&sb_out, "// OP_LT %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "    xorq %%rdx, %%rdx\n");
+            sb_appendf(&sb_out, "    popq %%rbx\n");
+            sb_appendf(&sb_out, "    popq %%rax\n");
+            sb_appendf(&sb_out, "    cmpq %%rbx, %%rax\n");
+            sb_appendf(&sb_out, "    setl %%dl\n");
+            sb_appendf(&sb_out, "    pushq %%rdx\n");
+        } break;
         case OP_GT:         TODO("OP_GT");         break;
         case OP_LE:         TODO("OP_LE");         break;
         case OP_GE:         TODO("OP_GE");         break;
@@ -218,9 +250,19 @@ int main(int argc, char **argv)
         case OP_WITH:       TODO("OP_WITH");       break;
         case OP_ENDWITH:    TODO("OP_ENDWITH");    break;
         case OP_DEBUGGER:   TODO("OP_DEBUGGER");   break;
-        case OP_JUMP:       TODO("OP_JUMP");       break;
+        case OP_JUMP: {
+            short offset = *pc++;
+            sb_appendf(&sb_out, "// OP_JUMP %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "    jmp op_%d\n", offset);
+        } break;
         case OP_JTRUE:      TODO("OP_JTRUE");      break;
-        case OP_JFALSE:     TODO("OP_JFALSE");     break;
+        case OP_JFALSE: {
+            short offset = *pc++;
+            sb_appendf(&sb_out, "// OP_FALSE %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "    popq %%rax\n");
+            sb_appendf(&sb_out, "    testq %%rax, %%rax\n");
+            sb_appendf(&sb_out, "    jz op_%d\n", offset);
+        } break;
         case OP_RETURN: {
             sb_appendf(&sb_out, "// OP_RETURN %s:%d\n", filename, line);
             sb_appendf(&sb_out, "    movq $0, %%rax\n");
@@ -242,6 +284,16 @@ int main(int argc, char **argv)
         default:
             UNREACHABLE(temp_sprintf("UNKNOWN(%u)", opcode));
         }
+    }
+    for (size_t i = 0; i < strings.count; ++i) {
+        sb_appendf(&sb_out, "string_%zu: .byte ", i);
+        size_t n = strlen(strings.items[i]);
+        for (size_t j = 0; j < n; ++j) {
+            if (j > 0) sb_appendf(&sb_out, ",");
+            sb_appendf(&sb_out, "0x%02X", strings.items[i][j]);
+        }
+        if (n > 0) sb_appendf(&sb_out, ",");
+        sb_appendf(&sb_out, "0x00\n");
     }
 
     const char *output_asm_path = temp_sprintf("%s.asm", output_path);
