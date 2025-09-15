@@ -86,22 +86,31 @@ int main(int argc, char **argv)
     js_Instruction *pc_end = F->code + F->codelen;
 
     while (pc < pc_end) {
-        pc++;                  // skipping the line
+        int line = *pc++;
         enum js_OpCode opcode = *pc++;
 
         switch (opcode) {
         case OP_POP: {
-            sb_appendf(&sb_out, "// OP_POP\n");
+            sb_appendf(&sb_out, "// OP_POP %s:%d\n", filename, line);
             sb_appendf(&sb_out, "    popq %%rax\n");
         } break;
-        case OP_DUP:        TODO("OP_DUP");        break;
+        case OP_DUP: {
+            sb_appendf(&sb_out, "// OP_DUP %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "    pushq (%%rsp)\n");
+        } break;
         case OP_DUP2:       TODO("OP_DUP2");       break;
-        case OP_ROT2:       TODO("OP_ROT2");       break;
+        case OP_ROT2: {
+            sb_appendf(&sb_out, "// OP_ROT2 %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "    popq %%rax\n");
+            sb_appendf(&sb_out, "    popq %%rbx\n");
+            sb_appendf(&sb_out, "    pushq %%rax\n");
+            sb_appendf(&sb_out, "    pushq %%rbx\n");
+        } break;
         case OP_ROT3:       TODO("OP_ROT3");       break;
         case OP_ROT4:       TODO("OP_ROT4");       break;
         case OP_INTEGER: {
             unsigned short lit = *pc++ - 32768;
-            sb_appendf(&sb_out, "// OP_INTEGER(%u)\n", lit);
+            sb_appendf(&sb_out, "// OP_INTEGER(%u) %s:%d\n", lit, filename, line);
             sb_appendf(&sb_out, "    pushq $%u\n", lit);
         } break;
         case OP_NUMBER:     TODO("OP_NUMBER");     break;
@@ -111,7 +120,7 @@ int main(int argc, char **argv)
         case OP_NEWOBJECT:  TODO("OP_NEWOBJECT");  break;
         case OP_NEWREGEXP:  TODO("OP_NEWREGEXP");  break;
         case OP_UNDEF: {
-            sb_appendf(&sb_out, "// OP_UNDEF\n");
+            sb_appendf(&sb_out, "// OP_UNDEF %s:%d\n", filename, line);
             sb_appendf(&sb_out, "    pushq $0\n");
         } break;
         case OP_NULL:       TODO("OP_NULL");       break;
@@ -121,12 +130,12 @@ int main(int argc, char **argv)
         case OP_CURRENT:    TODO("OP_CURRENT");    break;
         case OP_GETLOCAL: {
             unsigned short index = *pc++;
-            sb_appendf(&sb_out, "// OP_GETLOCAL(%u)\n", index);
+            sb_appendf(&sb_out, "// OP_GETLOCAL(%u) %s:%d\n", index, filename, line);
             sb_appendf(&sb_out, "    pushq -%u(%%rbp)\n", index*8);
         } break;
         case OP_SETLOCAL: {
             unsigned short index = *pc++;
-            sb_appendf(&sb_out, "// OP_SETLOCAL(%u)\n", index);
+            sb_appendf(&sb_out, "// OP_SETLOCAL(%u) %s:%d\n", index, filename, line);
             sb_appendf(&sb_out, "    movq (%%rsp), %%rax\n");
             sb_appendf(&sb_out, "    movq %%rax, -%u(%%rbp)\n", index*8);
         } break;
@@ -134,7 +143,7 @@ int main(int argc, char **argv)
         case OP_HASVAR:     TODO("OP_HASVAR");     break;
         case OP_GETVAR: {
             READSTRING();
-            sb_appendf(&sb_out, "// OP_GETVAR(%s)\n", str);
+            sb_appendf(&sb_out, "// OP_GETVAR(%s) %s:%d\n", str, filename, line);
             sb_appendf(&sb_out, "    pushq $%s\n", str);
         } break;
         case OP_SETVAR: {
@@ -157,13 +166,13 @@ int main(int argc, char **argv)
         case OP_CALL: {
             unsigned short arity = *pc++;
 
-            sb_appendf(&sb_out, "// OP_CALL(%u)\n", arity);
+            sb_appendf(&sb_out, "// OP_CALL(%u) %s:%d\n", arity, filename, line);
             const char *regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
             assert(arity == 1);
             sb_appendf(&sb_out, "    popq %%%s\n", regs[0]);
             sb_appendf(&sb_out, "    popq %%rax\n"); // skip implicit this
             sb_appendf(&sb_out, "    popq %%rax\n");
-            sb_appendf(&sb_out, "    callq %%rax\n");
+            sb_appendf(&sb_out, "    callq *%%rax\n");
             sb_appendf(&sb_out, "    pushq %%rax\n");
         } break;
         case OP_NEW:        TODO("OP_NEW");        break;
@@ -180,7 +189,7 @@ int main(int argc, char **argv)
         case OP_DIV:        TODO("OP_DIV");        break;
         case OP_MOD:        TODO("OP_MOD");        break;
         case OP_ADD: {
-            sb_appendf(&sb_out, "// OP_ADD\n");
+            sb_appendf(&sb_out, "// OP_ADD %s:%d\n", filename, line);
             sb_appendf(&sb_out, "    popq %%rax\n");
             sb_appendf(&sb_out, "    add %%rax, (%%rsp)\n");
         } break;
@@ -213,13 +222,21 @@ int main(int argc, char **argv)
         case OP_JTRUE:      TODO("OP_JTRUE");      break;
         case OP_JFALSE:     TODO("OP_JFALSE");     break;
         case OP_RETURN: {
-            sb_appendf(&sb_out, "// OP_RETURN\n");
+            sb_appendf(&sb_out, "// OP_RETURN %s:%d\n", filename, line);
             sb_appendf(&sb_out, "    movq $0, %%rax\n");
             sb_appendf(&sb_out, "    movq %%rbp, %%rsp\n");
             sb_appendf(&sb_out, "    pop %%rbp\n");
             sb_appendf(&sb_out, "    ret\n");
         } break;
-        case OP_GETPROP_S:  TODO("OP_GETPROP_S");  break;
+        case OP_GETPROP_S: {
+            READSTRING();
+            if (strcmp(str, "log") != 0) {
+                TODO("Support more properties");
+            }
+            sb_appendf(&sb_out, "// OP_GETPROP_S(%s) %s:%d\n", str, filename, line);
+            sb_appendf(&sb_out, "    popq %%rax\n");
+            sb_appendf(&sb_out, "    pushq (%%rax)\n");
+        } break;
         case OP_SETPROP_S:  TODO("OP_SETPROP_S");  break;
         case OP_DELPROP_S:  TODO("OP_DELPROP_S");  break;
         default:

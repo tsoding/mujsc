@@ -3,9 +3,10 @@
 #define NOB_EXPERIMENTAL_DELETE_OLD
 #include "./nob.h"
 
-#define MUJS_FOLDER "mujs-1.3.7/"
-#define BUILD_FOLDER "build/"
-#define MUJSC_EXE BUILD_FOLDER"mujsc"
+#define MUJS_FOLDER     "mujs-1.3.7/"
+#define BUILD_FOLDER    "build/"
+#define EXAMPLES_FOLDER "examples/"
+#define MUJSC_EXE        BUILD_FOLDER"mujsc"
 
 Cmd cmd = {0};
 
@@ -50,6 +51,8 @@ int main(int argc, char **argv)
             cmd_append(&cmd, "gf2");
         }
         cmd_append(&cmd, MUJSC_EXE);
+        cmd_append(&cmd, EXAMPLES_FOLDER"nice.js");
+        cmd_append(&cmd, BUILD_FOLDER"nice");
         da_append_many(&cmd, argv, argc);
         if (!cmd_run(&cmd)) return 1;
     }
