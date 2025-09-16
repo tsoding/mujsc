@@ -7,16 +7,8 @@ Small subset of ES5 to x86_64 assembly based on [MuJS](https://mujs.com/).
 ```console
 $ cc -o nob nob.c
 $ ./nob
-$ cat ./examples/example.js
-var a = 34;
-var b = 35;
-print_int(a);
-a += b;
-print_int(a);
-$ ./build/mujsc ./examples/example.js ./examples/example
-$ ./examples/example
-34
-69
+$ ./build/mujsc ./examples/hello.js ./hello
+$ ./hello
 ```
 
 ## Screencast
