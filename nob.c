@@ -6,12 +6,56 @@
 #define MUJS_FOLDER     "mujs-1.3.7/"
 #define BUILD_FOLDER    "build/"
 #define EXAMPLES_FOLDER "examples/"
+#define MUJS_EXE         BUILD_FOLDER"mujs"
+#define MUJS_PP_EXE      BUILD_FOLDER"mujs-pp"
 #define MUJSC_EXE        BUILD_FOLDER"mujsc"
 
 Cmd cmd = {0};
+Procs procs = {0};
 
 bool debug = false;
 bool run   = false;
+
+void compile(void)
+{
+    cmd_append(&cmd, "cc");
+    cmd_append(&cmd, "-I"MUJS_FOLDER);
+    cmd_append(&cmd, "-Wall");
+    cmd_append(&cmd, "-Wextra");
+    cmd_append(&cmd, "-Wno-unused-parameter"); // only because the mujs code base abuses this
+    if (debug) {
+        cmd_append(&cmd, "-ggdb");
+        cmd_append(&cmd, "-DDEBUG");
+    }
+}
+
+bool rebuild_toolchain(void)
+{
+    compile();
+    cmd_append(&cmd, "-o", MUJSC_EXE);
+    cmd_append(&cmd, "main.c");
+    cmd_append(&cmd, MUJS_FOLDER"one.c");
+    cmd_append(&cmd, "-lm");
+    if (!cmd_run(&cmd, .async = &procs)) return false;
+
+    compile();
+    cmd_append(&cmd, "-o", MUJS_EXE);
+    cmd_append(&cmd, MUJS_FOLDER"main.c");
+    cmd_append(&cmd, MUJS_FOLDER"one.c");
+    cmd_append(&cmd, "-lm");
+    if (!cmd_run(&cmd, .async = &procs)) return false;
+
+    compile();
+    cmd_append(&cmd, "-o", MUJS_PP_EXE);
+    cmd_append(&cmd, MUJS_FOLDER"pp.c");
+    cmd_append(&cmd, MUJS_FOLDER"one.c");
+    cmd_append(&cmd, "-lm");
+    if (!cmd_run(&cmd, .async = &procs)) return false;
+
+    if (!procs_flush(&procs)) return false;
+
+    return true;
+}
 
 int main(int argc, char **argv)
 {
@@ -33,18 +77,7 @@ int main(int argc, char **argv)
 
     if (!mkdir_if_not_exists(BUILD_FOLDER)) return 1;
 
-    cmd_append(&cmd, "cc");
-    cmd_append(&cmd, "-I"MUJS_FOLDER);
-    cmd_append(&cmd, "-Wall");
-    if (debug) {
-        cmd_append(&cmd, "-ggdb");
-        cmd_append(&cmd, "-DDEBUG");
-    }
-    cmd_append(&cmd, "-o", MUJSC_EXE);
-    cmd_append(&cmd, "main.c");
-    cmd_append(&cmd, MUJS_FOLDER"one.c");
-    cmd_append(&cmd, "-lm");
-    if (!cmd_run(&cmd)) return 1;
+    if (!rebuild_toolchain()) return 1;
 
     if (run) {
         if (debug) {
