@@ -200,7 +200,7 @@ int main(int argc, char **argv)
         case OP_BITNOT:     TODO("OP_BITNOT");     break;
         case OP_LOGNOT:     TODO("OP_LOGNOT");     break;
         case OP_INC: {
-            sb_appendf(&sb_out, "// OP_ADD %s:%d\n", filename, line);
+            sb_appendf(&sb_out, "// OP_INC %s:%d\n", filename, line);
             sb_appendf(&sb_out, "    incq (%%rsp)\n");
         } break;
         case OP_DEC:        TODO("OP_DEC");        break;
