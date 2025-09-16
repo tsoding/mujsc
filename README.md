@@ -1,6 +1,6 @@
 # MuJS Compiler
 
-ES5 to x86_64 compiler using [MuJS](https://mujs.com/) as the frontend.
+A subset of JavaScript ES5 to x86_64 compiler using [MuJS](https://mujs.com/) as the frontend.
 
 > [!WARNING]
 > The compiler is not fully finished yet.
