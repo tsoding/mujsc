@@ -1,3 +1,7 @@
+function build() {
+    set_output_path("./build/fib");
+}
+
 var a = 0;
 var b = 1;
 // TODO: make it possible to generate fib numbers up until 1_000_000

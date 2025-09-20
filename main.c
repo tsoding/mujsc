@@ -13,7 +13,7 @@ Cmd cmd = {0};
 
 void usage(const char *program_name)
 {
-    fprintf(stderr, "Usage: %s <input.js> <output>\n", program_name);
+    fprintf(stderr, "Usage: %s <input.js>\n", program_name);
 }
 
 typedef struct {
@@ -21,6 +21,27 @@ typedef struct {
     size_t count;
     size_t capacity;
 } Strings;
+
+static const char *console_js = "var console = { log: print, debug: print, warn: print, error: print };";
+
+static const char *output_path = NULL;
+static void jsB_set_output_path(js_State *J)
+{
+    output_path = strdup(js_tostring(J, 1));
+    js_pushundefined(J);
+}
+
+static void jsB_print(js_State *J)
+{
+    int i, top = js_gettop(J);
+    for (i = 1; i < top; ++i) {
+        const char *s = js_tostring(J, i);
+        if (i > 1) putchar(' ');
+        fputs(s, stdout);
+    }
+    putchar('\n');
+    js_pushundefined(J);
+}
 
 int main(int argc, char **argv)
 {
@@ -33,15 +54,27 @@ int main(int argc, char **argv)
     }
     const char *filename = shift(argv, argc);
 
-    if (argc <= 0) {
-        usage(program_name);
-        fprintf(stderr, "ERROR: no output is provided\n");
-        return 1;
+    {
+        String_View filename_sv = sv_from_cstr(filename);
+        const char *js_ext = ".js";
+        if (sv_end_with(filename_sv, js_ext)) {
+            size_t n = strlen(js_ext);
+            filename_sv.count -= n;
+        }
+        output_path = temp_sv_to_cstr(filename_sv);
     }
-    const char *output_path = shift(argv, argc);
 
     js_State *J = js_newstate(NULL, NULL, 0);
     assert(J != NULL);
+
+    js_newcfunction(J, jsB_print, "print", 0);
+    js_setglobal(J, "print");
+
+    js_newcfunction(J, jsB_set_output_path, "set_output_path", 0);
+    js_setglobal(J, "set_output_path");
+
+    int ret = js_dostring(J, console_js);
+    assert(ret == 0);
 
     String_Builder sb_source = {0};
     if (!read_entire_file(filename, &sb_source)) return 1;
@@ -53,8 +86,7 @@ int main(int argc, char **argv)
     js_Function *F;
 
     if (js_try(J)) {
-        jsP_freeparse(J);
-        printf("EXCEPTION!!\n");
+        printf("EXCEPTION: %s\n", js_tostring(J, -1));
         return 69;
     }
 
@@ -62,14 +94,20 @@ int main(int argc, char **argv)
     F = jsC_compilescript(J, P, J->default_strict);
     jsP_freeparse(J);
 
-    js_endtry(J);
-
     // pc = ..... [OP_SETVAR] [ ] [ ] [ ] [ ]
     //                                        ^
 
-#ifdef DEBUG
-    asm("int3");
-#endif
+    js_Function **FT = F->funtab;
+    for (int i = 0; i < F->funlen; ++i) {
+        if (strcmp(FT[i]->name, "build") == 0) {
+            js_Object *obj = jsV_newobject(J, JS_CFUNCTION, J->Function_prototype);
+            obj->u.f.function = FT[i];
+            obj->u.f.scope = J->E;
+            js_pushobject(J, obj);
+            js_pushundefined(J);
+            js_call(J, 0);
+        }
+    }
 
     const char *str;
 #define READSTRING() \
@@ -133,7 +171,11 @@ int main(int argc, char **argv)
             da_append(&strings, strdup(str));
             sb_appendf(&sb_out, "    pushq $string_%zu\n", index);
         } break;
-        case OP_CLOSURE:    TODO("OP_CLOSURE");    break;
+        case OP_CLOSURE: {
+            unsigned short lit = *pc++; // skip the function
+            sb_appendf(&sb_out, "// OP_CLOSURE(%u) %s:%d\n", lit, filename, line);
+            sb_appendf(&sb_out, "    pushq $0\n"); // TODO: emit function pointer
+        } break;
         case OP_NEWARRAY:   TODO("OP_NEWARRAY");   break;
         case OP_NEWOBJECT:  TODO("OP_NEWOBJECT");  break;
         case OP_NEWREGEXP:  TODO("OP_NEWREGEXP");  break;
@@ -285,6 +327,8 @@ int main(int argc, char **argv)
             UNREACHABLE(temp_sprintf("UNKNOWN(%u)", opcode));
         }
     }
+    js_endtry(J);
+
     for (size_t i = 0; i < strings.count; ++i) {
         sb_appendf(&sb_out, "string_%zu: .byte ", i);
         size_t n = strlen(strings.items[i]);
@@ -298,7 +342,7 @@ int main(int argc, char **argv)
 
     const char *output_asm_path = temp_sprintf("%s.asm", output_path);
     if (!write_entire_file(output_asm_path, sb_out.items, sb_out.count)) return 1;
-    nob_log(INFO, "Generate %s", output_path);
+    nob_log(INFO, "Generate %s", output_asm_path);
 
     const char *output_o_path = temp_sprintf("%s.o", output_path);
     cmd_append(&cmd, "as");
